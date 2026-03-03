@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use rmcp::model::{CallToolResult, Content};
 use serde_json::Value;
 use tokio::process::Command;
@@ -213,6 +211,7 @@ mod tests {
     use super::*;
     use crate::config::{ArgConfig, ArgType, ArrayStyle, JsonType};
     use crate::tool_gen::ResolvedCommand;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn echo_command(args: Vec<ArgConfig>) -> ResolvedCommand {

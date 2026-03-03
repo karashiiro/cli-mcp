@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rmcp::model::{JsonObject, Tool};
 use serde_json::json;
 
-use crate::config::{ArgConfig, ArrayStyle, CliConfig, JsonType, ToolConfig};
+use crate::config::{ArgConfig, CliConfig, JsonType, ToolConfig};
 
 /// A resolved command ready for execution.
 /// Maps an MCP tool name back to the CLI invocation details.
@@ -145,7 +145,7 @@ fn build_resolved_command(config: &CliConfig, tool_config: &ToolConfig) -> Resol
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ArgType, CliMeta};
+    use crate::config::{ArrayStyle, ArgType, CliMeta};
 
     fn minimal_config(tools: Vec<ToolConfig>) -> CliConfig {
         CliConfig {

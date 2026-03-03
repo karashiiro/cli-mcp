@@ -1,11 +1,8 @@
-mod config;
-mod executor;
-mod server;
-mod tool_gen;
-
 use clap::Parser;
 use rmcp::ServiceExt;
 use std::path::PathBuf;
+
+use cli_mcp::{config, server, tool_gen};
 
 #[derive(Parser)]
 #[command(name = "cli-mcp", about = "Config-driven CLI-to-MCP server bridge")]
