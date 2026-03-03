@@ -350,10 +350,7 @@ working_dir = "/tmp/other"
 DEBUG = "true"
 "#;
         let config = parse_config(toml).unwrap();
-        assert_eq!(
-            config.cli.working_dir,
-            Some(PathBuf::from("/tmp/project"))
-        );
+        assert_eq!(config.cli.working_dir, Some(PathBuf::from("/tmp/project")));
         assert_eq!(config.cli.env.get("NODE_ENV").unwrap(), "production");
         assert_eq!(
             config.tools[0].working_dir,

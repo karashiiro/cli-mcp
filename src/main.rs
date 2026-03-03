@@ -33,8 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     })?;
 
-    let config = config::parse_config(&config_str)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let config =
+        config::parse_config(&config_str).map_err(|e| format!("Failed to parse config: {}", e))?;
 
     // Generate tools
     let generated = tool_gen::generate_tools(&config)

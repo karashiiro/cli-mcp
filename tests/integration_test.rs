@@ -107,9 +107,7 @@ async fn test_npm_version_execution() {
 async fn test_npm_help_execution() {
     let server = make_npm_server();
 
-    let result = server
-        .handle_call("npm_help", serde_json::Map::new())
-        .await;
+    let result = server.handle_call("npm_help", serde_json::Map::new()).await;
     assert_eq!(result.is_error, Some(false));
     let text = result.content[0].as_text().unwrap().text.clone();
     // npm help should contain "npm" somewhere in output

@@ -92,7 +92,13 @@ fn apply_arguments(
             }
             ArgType::Option => {
                 if let Some(value) = arguments.get(&prop_name) {
-                    apply_option(cmd, &flag_name, value, &arg_config.json_type, &arg_config.array_style)?;
+                    apply_option(
+                        cmd,
+                        &flag_name,
+                        value,
+                        &arg_config.json_type,
+                        &arg_config.array_style,
+                    )?;
                 }
             }
             ArgType::Positional => {} // Already handled
@@ -281,16 +287,14 @@ mod tests {
         let resolved = ResolvedCommand {
             executable: "printf".to_string(),
             command_parts: vec!["%s ".to_string()],
-            args: vec![
-                ArgConfig {
-                    name: "verbose".to_string(),
-                    arg_type: ArgType::Flag,
-                    description: "Verbose".to_string(),
-                    required: false,
-                    json_type: JsonType::Boolean,
-                    array_style: ArrayStyle::default(),
-                },
-            ],
+            args: vec![ArgConfig {
+                name: "verbose".to_string(),
+                arg_type: ArgType::Flag,
+                description: "Verbose".to_string(),
+                required: false,
+                json_type: JsonType::Boolean,
+                array_style: ArrayStyle::default(),
+            }],
             output_schema: None,
             raw_args: vec![],
             env: HashMap::new(),
@@ -454,7 +458,12 @@ mod tests {
             executable: "echo".to_string(),
             command_parts: vec![r#"{"name":"test","version":"1.0"}"#.to_string()],
             args: vec![],
-            output_schema: Some(serde_json::json!({"type": "object"}).as_object().unwrap().clone()),
+            output_schema: Some(
+                serde_json::json!({"type": "object"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
             raw_args: vec![],
             env: HashMap::new(),
             working_dir: None,
@@ -475,7 +484,12 @@ mod tests {
             executable: "echo".to_string(),
             command_parts: vec!["not json output".to_string()],
             args: vec![],
-            output_schema: Some(serde_json::json!({"type": "object"}).as_object().unwrap().clone()),
+            output_schema: Some(
+                serde_json::json!({"type": "object"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
             raw_args: vec![],
             env: HashMap::new(),
             working_dir: None,

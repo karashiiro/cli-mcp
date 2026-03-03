@@ -145,7 +145,7 @@ fn build_resolved_command(config: &CliConfig, tool_config: &ToolConfig) -> Resol
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ArrayStyle, ArgType, CliMeta};
+    use crate::config::{ArgType, ArrayStyle, CliMeta};
 
     fn minimal_config(tools: Vec<ToolConfig>) -> CliConfig {
         CliConfig {
@@ -257,9 +257,8 @@ mod tests {
     #[test]
     fn test_output_schema_attached() {
         let mut tool_config = make_tool(vec!["view"], "View package", vec![]);
-        tool_config.output_schema = Some(
-            r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#.to_string(),
-        );
+        tool_config.output_schema =
+            Some(r#"{"type": "object", "properties": {"name": {"type": "string"}}}"#.to_string());
 
         let config = minimal_config(vec![tool_config]);
         let result = generate_tools(&config).unwrap();
@@ -319,9 +318,17 @@ mod tests {
     #[test]
     fn test_env_merging() {
         let mut config = minimal_config(vec![make_tool(vec!["install"], "Install", vec![])]);
-        config.cli.env.insert("NODE_ENV".to_string(), "production".to_string());
-        config.cli.env.insert("DEBUG".to_string(), "false".to_string());
-        config.tools[0].env.insert("DEBUG".to_string(), "true".to_string());
+        config
+            .cli
+            .env
+            .insert("NODE_ENV".to_string(), "production".to_string());
+        config
+            .cli
+            .env
+            .insert("DEBUG".to_string(), "false".to_string());
+        config.tools[0]
+            .env
+            .insert("DEBUG".to_string(), "true".to_string());
 
         let result = generate_tools(&config).unwrap();
         let cmd = result.commands.get("npm_install").unwrap();
@@ -340,20 +347,14 @@ mod tests {
 
         let result = generate_tools(&config).unwrap();
         let cmd = result.commands.get("npm_install").unwrap();
-        assert_eq!(
-            cmd.working_dir,
-            Some(std::path::PathBuf::from("/tool/dir"))
-        );
+        assert_eq!(cmd.working_dir, Some(std::path::PathBuf::from("/tool/dir")));
 
         // Without tool-level override, uses cli-level
         let mut config2 = minimal_config(vec![make_tool(vec!["run"], "Run", vec![])]);
         config2.cli.working_dir = Some("/cli/dir".into());
         let result2 = generate_tools(&config2).unwrap();
         let cmd2 = result2.commands.get("npm_run").unwrap();
-        assert_eq!(
-            cmd2.working_dir,
-            Some(std::path::PathBuf::from("/cli/dir"))
-        );
+        assert_eq!(cmd2.working_dir, Some(std::path::PathBuf::from("/cli/dir")));
     }
 
     #[test]
