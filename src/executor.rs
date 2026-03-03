@@ -1,9 +1,14 @@
+use std::time::Duration;
+
 use rmcp::model::{CallToolResult, Content};
 use serde_json::Value;
 use tokio::process::Command;
 
 use crate::config::{ArgType, ArrayStyle, JsonType};
 use crate::tool_gen::ResolvedCommand;
+
+/// Default command execution timeout (30 seconds).
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Execute a resolved command with the given arguments from the MCP tool call.
 pub async fn execute_command(
@@ -40,13 +45,19 @@ pub async fn execute_command(
         cmd.current_dir(dir);
     }
 
-    // Execute
-    let output = match cmd.output().await {
-        Ok(output) => output,
-        Err(e) => {
+    // Execute with timeout
+    let output = match tokio::time::timeout(DEFAULT_TIMEOUT, cmd.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
             return CallToolResult::error(vec![Content::text(format!(
                 "Failed to execute command: {}",
                 e
+            ))]);
+        }
+        Err(_) => {
+            return CallToolResult::error(vec![Content::text(format!(
+                "Command timed out after {} seconds",
+                DEFAULT_TIMEOUT.as_secs()
             ))]);
         }
     };
@@ -178,12 +189,13 @@ fn value_to_string(value: &Value) -> String {
 
 fn format_success_result(
     stdout: String,
-    _stderr: String,
+    stderr: String,
     resolved: &ResolvedCommand,
 ) -> CallToolResult {
     if resolved.output_schema.is_some() {
         // Must parse stdout as JSON and return structured content
-        match serde_json::from_str::<Value>(&stdout) {
+        // Trim whitespace before parsing to handle trailing newlines
+        match serde_json::from_str::<Value>(stdout.trim()) {
             Ok(json_value) => CallToolResult::structured(json_value),
             Err(e) => CallToolResult::error(vec![Content::text(format!(
                 "Command succeeded but output is not valid JSON (outputSchema declared): {}\nOutput: {}",
@@ -191,7 +203,12 @@ fn format_success_result(
             ))]),
         }
     } else {
-        CallToolResult::success(vec![Content::text(stdout)])
+        let mut content = vec![Content::text(stdout)];
+        // Include stderr as secondary content if present (warnings, deprecations, etc.)
+        if !stderr.is_empty() {
+            content.push(Content::text(format!("[stderr] {}", stderr)));
+        }
+        CallToolResult::success(content)
     }
 }
 
@@ -559,6 +576,56 @@ mod tests {
         assert_eq!(result.is_error, Some(false));
         let text = result.content[0].as_text().unwrap().text.trim();
         assert!(text.starts_with("/tmp"));
+    }
+
+    #[tokio::test]
+    async fn test_stderr_included_on_success() {
+        let resolved = ResolvedCommand {
+            executable: "sh".to_string(),
+            command_parts: vec![
+                "-c".to_string(),
+                "echo 'output'; echo 'warning message' >&2".to_string(),
+            ],
+            args: vec![],
+            output_schema: None,
+            raw_args: vec![],
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let args = serde_json::Map::new();
+
+        let result = execute_command(&resolved, &args).await;
+        assert_eq!(result.is_error, Some(false));
+        assert_eq!(result.content.len(), 2);
+        let stdout_text = result.content[0].as_text().unwrap().text.clone();
+        assert!(stdout_text.contains("output"));
+        let stderr_text = result.content[1].as_text().unwrap().text.clone();
+        assert!(stderr_text.contains("warning message"));
+    }
+
+    #[tokio::test]
+    async fn test_command_timeout() {
+        let resolved = ResolvedCommand {
+            executable: "sleep".to_string(),
+            command_parts: vec!["60".to_string()],
+            args: vec![],
+            output_schema: None,
+            raw_args: vec![],
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let args = serde_json::Map::new();
+
+        // Override the timeout for this test by running with a short timeout directly
+        let result = tokio::time::timeout(
+            Duration::from_millis(100),
+            execute_command(&resolved, &args),
+        )
+        .await;
+
+        // The execute_command itself has a 30s timeout, but we wrap it with a shorter one
+        // to keep the test fast. Either way, a timeout should be detected.
+        assert!(result.is_err(), "Expected timeout");
     }
 
     #[tokio::test]

@@ -33,8 +33,16 @@ pub fn generate_tools(config: &CliConfig) -> Result<GeneratedTools, String> {
 
     for tool_config in &config.tools {
         let tool_name = tool_config.tool_name(&config.cli.name);
-        let mcp_tool = build_mcp_tool(&tool_name, tool_config)?;
-        let resolved = build_resolved_command(config, tool_config);
+
+        if commands.contains_key(&tool_name) {
+            return Err(format!("Duplicate tool name: '{}'", tool_name));
+        }
+
+        // Parse output_schema once and share between MCP tool and resolved command
+        let parsed_output_schema = parse_output_schema(&tool_name, tool_config)?;
+
+        let mcp_tool = build_mcp_tool(&tool_name, tool_config, &parsed_output_schema)?;
+        let resolved = build_resolved_command(config, tool_config, parsed_output_schema);
 
         tools.push(mcp_tool);
         commands.insert(tool_name, resolved);
@@ -43,7 +51,34 @@ pub fn generate_tools(config: &CliConfig) -> Result<GeneratedTools, String> {
     Ok(GeneratedTools { tools, commands })
 }
 
-fn build_mcp_tool(tool_name: &str, tool_config: &ToolConfig) -> Result<Tool, String> {
+/// Parse the output_schema string from config into a JsonObject, if present.
+fn parse_output_schema(
+    tool_name: &str,
+    tool_config: &ToolConfig,
+) -> Result<Option<JsonObject>, String> {
+    match &tool_config.output_schema {
+        Some(schema_str) => {
+            let schema_value: serde_json::Value =
+                serde_json::from_str(schema_str).map_err(|e| {
+                    format!("Invalid output_schema JSON for tool '{}': {}", tool_name, e)
+                })?;
+            let schema_obj = schema_value.as_object().ok_or_else(|| {
+                format!(
+                    "output_schema for tool '{}' must be a JSON object",
+                    tool_name
+                )
+            })?;
+            Ok(Some(schema_obj.clone()))
+        }
+        None => Ok(None),
+    }
+}
+
+fn build_mcp_tool(
+    tool_name: &str,
+    tool_config: &ToolConfig,
+    parsed_output_schema: &Option<JsonObject>,
+) -> Result<Tool, String> {
     let input_schema = build_input_schema(&tool_config.args);
     let input_schema_arc: Arc<JsonObject> = Arc::new(input_schema);
 
@@ -53,19 +88,8 @@ fn build_mcp_tool(tool_name: &str, tool_config: &ToolConfig) -> Result<Tool, Str
         input_schema_arc,
     );
 
-    if let Some(ref schema_str) = tool_config.output_schema {
-        let schema_value: serde_json::Value = serde_json::from_str(schema_str)
-            .map_err(|e| format!("Invalid output_schema JSON for tool '{}': {}", tool_name, e))?;
-        let schema_obj = schema_value
-            .as_object()
-            .ok_or_else(|| {
-                format!(
-                    "output_schema for tool '{}' must be a JSON object",
-                    tool_name
-                )
-            })?
-            .clone();
-        tool.output_schema = Some(Arc::new(schema_obj));
+    if let Some(ref schema_obj) = parsed_output_schema {
+        tool.output_schema = Some(Arc::new(schema_obj.clone()));
     }
 
     Ok(tool)
@@ -116,7 +140,11 @@ fn build_arg_property(arg: &ArgConfig) -> serde_json::Value {
     }
 }
 
-fn build_resolved_command(config: &CliConfig, tool_config: &ToolConfig) -> ResolvedCommand {
+fn build_resolved_command(
+    config: &CliConfig,
+    tool_config: &ToolConfig,
+    parsed_output_schema: Option<JsonObject>,
+) -> ResolvedCommand {
     // Merge env: cli-level as base, tool-level overrides
     let mut env = config.cli.env.clone();
     env.extend(tool_config.env.clone());
@@ -131,11 +159,7 @@ fn build_resolved_command(config: &CliConfig, tool_config: &ToolConfig) -> Resol
         executable: config.cli.executable.clone(),
         command_parts: tool_config.command.clone(),
         args: tool_config.args.clone(),
-        output_schema: tool_config.output_schema.as_ref().and_then(|s| {
-            serde_json::from_str::<serde_json::Value>(s)
-                .ok()
-                .and_then(|v| v.as_object().cloned())
-        }),
+        output_schema: parsed_output_schema,
         raw_args: tool_config.raw_args.clone(),
         env,
         working_dir,
@@ -373,6 +397,36 @@ mod tests {
         let schema = result.tools[0].schema_as_json_value();
         // When no args are required, the "required" field should not be present
         assert!(schema.get("required").is_none());
+    }
+
+    #[test]
+    fn test_duplicate_tool_names_errors() {
+        let config = minimal_config(vec![
+            make_tool(vec!["install"], "Install packages", vec![]),
+            make_tool(vec!["install"], "Install again", vec![]),
+        ]);
+        let result = generate_tools(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Duplicate tool name"));
+    }
+
+    #[test]
+    fn test_non_object_output_schema_errors() {
+        let mut tool_config = make_tool(vec!["view"], "View", vec![]);
+        tool_config.output_schema = Some(r#"[1, 2, 3]"#.to_string());
+
+        let config = minimal_config(vec![tool_config]);
+        let result = generate_tools(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must be a JSON object"));
+    }
+
+    #[test]
+    fn test_empty_tools_list() {
+        let config = minimal_config(vec![]);
+        let result = generate_tools(&config).unwrap();
+        assert!(result.tools.is_empty());
+        assert!(result.commands.is_empty());
     }
 
     #[test]

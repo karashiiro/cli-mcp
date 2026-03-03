@@ -103,9 +103,37 @@ pub enum ArrayStyle {
     Space,
 }
 
-/// Parse a TOML string into a CliConfig.
-pub fn parse_config(toml_str: &str) -> Result<CliConfig, toml::de::Error> {
-    toml::from_str(toml_str)
+impl CliConfig {
+    /// Validate the config for semantic correctness beyond what TOML deserialization checks.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.cli.name.is_empty() {
+            return Err("cli.name must not be empty".to_string());
+        }
+        if self.cli.executable.is_empty() {
+            return Err("cli.executable must not be empty".to_string());
+        }
+        for (i, tool) in self.tools.iter().enumerate() {
+            if tool.command.is_empty() {
+                return Err(format!("tools[{}].command must not be empty", i));
+            }
+            for (j, part) in tool.command.iter().enumerate() {
+                if part.is_empty() {
+                    return Err(format!(
+                        "tools[{}].command[{}] must not be an empty string",
+                        i, j
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Parse a TOML string into a CliConfig and validate it.
+pub fn parse_config(toml_str: &str) -> Result<CliConfig, String> {
+    let config: CliConfig = toml::from_str(toml_str).map_err(|e| e.to_string())?;
+    config.validate()?;
+    Ok(config)
 }
 
 #[cfg(test)]
@@ -357,6 +385,54 @@ DEBUG = "true"
             Some(PathBuf::from("/tmp/other"))
         );
         assert_eq!(config.tools[0].env.get("DEBUG").unwrap(), "true");
+    }
+
+    #[test]
+    fn test_reject_empty_command() {
+        let toml = r#"
+[cli]
+name = "npm"
+executable = "npm"
+
+[[tools]]
+command = []
+description = "Empty command"
+"#;
+        let result = parse_config(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must not be empty"));
+    }
+
+    #[test]
+    fn test_reject_empty_cli_name() {
+        let toml = r#"
+[cli]
+name = ""
+executable = "npm"
+
+[[tools]]
+command = ["install"]
+description = "Install"
+"#;
+        let result = parse_config(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cli.name must not be empty"));
+    }
+
+    #[test]
+    fn test_reject_empty_command_part() {
+        let toml = r#"
+[cli]
+name = "npm"
+executable = "npm"
+
+[[tools]]
+command = ["config", ""]
+description = "Empty part"
+"#;
+        let result = parse_config(toml);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must not be an empty string"));
     }
 
     #[test]

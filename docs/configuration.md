@@ -186,10 +186,9 @@ This allows MCP clients to use valid JSON property names while the CLI receives 
 ## Output Schema
 
 When a tool declares `output_schema`, the server will:
-1. Parse the command's stdout as JSON
+1. Trim and parse the command's stdout as JSON
 2. Return it as `structuredContent` in the MCP response
-3. Also include the JSON as text content for backwards compatibility
-4. Return an error if stdout is not valid JSON
+3. Return an error if stdout is not valid JSON
 
 ```toml
 [[tools]]

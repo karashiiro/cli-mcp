@@ -14,32 +14,33 @@ cli-mcp is a config-driven bridge that exposes arbitrary CLI tools as MCP (Model
 
 ## Architecture
 
+### Startup Pipeline
+
+```mermaid
+flowchart LR
+    A["TOML Config<br/>(user file)"] --> B["Config Parse<br/>config.rs"]
+    B --> C["Tool Gen<br/>tool_gen.rs"]
+    C --> D["MCP Server<br/>server.rs"]
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│  TOML Config │────▶│  Config Parse │────▶│  Tool Gen    │────▶│  MCP Server  │
-│  (user file) │     │  config.rs   │     │  tool_gen.rs │     │  server.rs   │
-└─────────────┘     └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                                      │
-                                                               stdio transport
-                                                                      │
-                                                              ┌───────▼───────┐
-                                                              │   MCP Client  │
-                                                              │  (AI agent)   │
-                                                              └───────┬───────┘
-                                                                      │
-                                                              tools/call request
-                                                                      │
-                                                              ┌───────▼───────┐
-                                                              │   Executor    │
-                                                              │  executor.rs  │
-                                                              └───────┬───────┘
-                                                                      │
-                                                              tokio::process::Command
-                                                                      │
-                                                              ┌───────▼───────┐
-                                                              │   CLI Tool    │
-                                                              │  (npm, git…)  │
-                                                              └───────────────┘
+
+### Runtime Flow
+
+```mermaid
+sequenceDiagram
+    participant Client as MCP Client<br/>(AI agent)
+    participant Server as MCP Server<br/>server.rs
+    participant Executor as Executor<br/>executor.rs
+    participant CLI as CLI Tool<br/>(npm, git, etc.)
+
+    Client->>Server: tools/list
+    Server-->>Client: Vec&lt;Tool&gt;
+
+    Client->>Server: tools/call (tool_name, args)
+    Server->>Executor: execute_command(resolved, args)
+    Executor->>CLI: tokio::process::Command
+    CLI-->>Executor: stdout, stderr, exit code
+    Executor-->>Server: CallToolResult
+    Server-->>Client: text content or structuredContent
 ```
 
 ### Module Responsibilities
@@ -49,23 +50,27 @@ cli-mcp is a config-driven bridge that exposes arbitrary CLI tools as MCP (Model
 - Supports all argument types: positional, flag, option
 - Supports all JSON Schema types: string, number, integer, boolean, array
 - Handles array argument styles: repeated, comma-separated, space-separated
-- Provides `parse_config()` for TOML deserialization
+- Provides `parse_config()` for TOML deserialization with semantic validation
+- Validates non-empty CLI name/executable, non-empty commands
 
 #### `tool_gen.rs` — Tool Generation
 - Converts flat `ToolConfig` entries into rmcp `Tool` structs
 - Generates JSON Schema `inputSchema` from argument definitions
-- Parses and attaches optional `outputSchema` from config
+- Parses and attaches optional `outputSchema` from config (parsed once, shared)
 - Produces a `ResolvedCommand` lookup map for the executor
+- Detects and rejects duplicate tool names
 - Handles environment variable merging (tool-level overrides cli-level)
 - Handles working directory precedence (tool > cli)
 
 #### `executor.rs` — Command Execution
 - Spawns CLI processes via `tokio::process::Command`
+- Enforces a 30-second execution timeout to prevent hanging
 - Resolves arguments in correct order (positional first, then flags/options)
 - Handles array argument expansion per configured style
 - Appends raw_args after user arguments
 - Sets environment variables and working directory
 - Formats results based on exit code and outputSchema presence
+- Includes stderr from successful commands as secondary content
 
 #### `server.rs` — MCP Server
 - Implements `rmcp::handler::server::ServerHandler`
@@ -99,9 +104,11 @@ TOML was chosen over JSON or YAML because:
 
 ### outputSchema and Structured Content
 When a tool declares `output_schema`, the executor:
-1. Parses stdout as JSON
-2. Returns it as `structuredContent` (with a text fallback)
-3. If stdout isn't valid JSON, returns an error
+1. Trims and parses stdout as JSON
+2. Returns it as `structuredContent` in the MCP response
+3. If stdout isn't valid JSON, returns an error (`isError: true`)
+
+When no `output_schema` is declared, stdout is returned as text content. Stderr from successful commands is included as secondary text content to surface warnings and deprecation notices.
 
 This is strictly opt-in. Tools without `output_schema` just return raw text. This avoids false positives from commands that happen to output JSON-like content.
 
@@ -126,8 +133,11 @@ This ensures positional arguments maintain their intended order regardless of ho
 | Config file not found | Fatal error at startup |
 | Invalid TOML syntax | Fatal error at startup |
 | Invalid output_schema JSON | Fatal error at startup |
+| Empty cli.name or command | Fatal error at startup |
+| Duplicate tool names | Fatal error at startup |
 | CLI executable not found | `isError: true` in tool result |
 | Command exits non-zero | `isError: true`, stdout+stderr as message |
+| Command exceeds timeout (30s) | `isError: true`, timeout message |
 | outputSchema but non-JSON output | `isError: true`, descriptive error |
 | Unknown tool name | `isError: true`, "Unknown tool" message |
 
