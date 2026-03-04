@@ -1,0 +1,124 @@
+[cli]
+name = "npm"
+executable = "npm"
+
+# Simple command: npm --version (using raw_args for the flag)
+[[tools]]
+command = ["--version"]
+description = "Print npm version"
+
+# npm install
+[[tools]]
+command = ["install"]
+description = "Install packages from package.json or by name"
+
+[[tools.args]]
+name = "package"
+arg_type = "positional"
+description = "Package name to install (optional, installs from package.json if omitted)"
+required = false
+json_type = "string"
+
+[[tools.args]]
+name = "save-dev"
+arg_type = "flag"
+description = "Save package as a dev dependency"
+required = false
+json_type = "boolean"
+
+[[tools.args]]
+name = "global"
+arg_type = "flag"
+description = "Install package globally"
+required = false
+json_type = "boolean"
+
+[[tools.args]]
+name = "registry"
+arg_type = "option"
+description = "Registry URL to use"
+required = false
+json_type = "string"
+
+# npm run <script>
+[[tools]]
+command = ["run"]
+description = "Run a script defined in package.json"
+
+[[tools.args]]
+name = "script"
+arg_type = "positional"
+description = "Script name to run"
+required = true
+json_type = "string"
+
+# npm config (parent command — list all config)
+[[tools]]
+command = ["config", "list"]
+description = "List all npm configuration"
+
+# npm config set
+[[tools]]
+command = ["config", "set"]
+description = "Set a config key to a value"
+
+[[tools.args]]
+name = "key"
+arg_type = "positional"
+description = "Config key"
+required = true
+json_type = "string"
+
+[[tools.args]]
+name = "value"
+arg_type = "positional"
+description = "Config value"
+required = true
+json_type = "string"
+
+# npm config get
+[[tools]]
+command = ["config", "get"]
+description = "Get a config value"
+
+[[tools.args]]
+name = "key"
+arg_type = "positional"
+description = "Config key"
+required = true
+json_type = "string"
+
+# npm view with JSON output (outputSchema example)
+[[tools]]
+command = ["view"]
+description = "View registry info for a package as JSON"
+output_schema = """
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "description": { "type": "string" }
+  }
+}
+"""
+raw_args = ["--json"]
+
+[[tools.args]]
+name = "package"
+arg_type = "positional"
+description = "Package name"
+required = true
+json_type = "string"
+
+# npm help
+[[tools]]
+command = ["help"]
+description = "Get help for npm commands"
+
+[[tools.args]]
+name = "command"
+arg_type = "positional"
+description = "Command to get help for"
+required = false
+json_type = "string"
